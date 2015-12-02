@@ -22,13 +22,9 @@ PlayerAI::~PlayerAI()
 
 Move *PlayerAI::doMove()
 {
-    clock_t timer = clock();
     gameTree *tree = new gameTree(board, player);
     Move *moveToMake = tree->findBestMove(DEPTH);
     board->doMove(moveToMake);
-    timer = clock() - timer;
-    float ms = float(timer) / CLOCKS_PER_SEC * 1000;
-    cout << "this decision took : " << ms << endl;
     return moveToMake;
 }
 
@@ -36,3 +32,4 @@ Board * PlayerAI::getBoard()
 {
     return board;
 }
+

@@ -9,6 +9,7 @@
 #include <iostream>
 #include "common.h"
 #include "board.hpp"
+#include "move.hpp"
 #include "gameTree.hpp"
 using namespace std;
 

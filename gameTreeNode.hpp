@@ -11,7 +11,6 @@
 #include "common.h"
 #include "board.hpp"
 #include "move.hpp"
-#include "gameTreeNode.hpp"
 
 
 class gameTreeNode

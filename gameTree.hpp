@@ -8,7 +8,6 @@
 #define gameTree_hpp
 
 #include "common.h"
-#include "move.hpp"
 #include "board.hpp"
 #include "gameTreeNode.hpp"
 

@@ -17,11 +17,12 @@ public:
     int getX();
     int getY();
     Side getPlayer();
+    int x, y;
     
 private:
-    int x, y;
     Side player;
 };
 
 
 #endif /* move_hpp */
+
