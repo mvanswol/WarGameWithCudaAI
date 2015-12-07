@@ -74,8 +74,7 @@ private:
 
 };
 
-void callCudaTreeSearch(Move * moveList, int * scoreArray, int * occupancyArray, int * outputValues, Side player, Side maximizer, int alpha, int beta, int numMovesLeft, int depth);
-
+void callCudaTreeSearch(int * scoreArray, int * occupancyArray, int * outputArray, Side maximizer, int numMoves, int depth);
 
 
 #endif /* cudaGameTree.cuh */

@@ -47,125 +47,55 @@ gameTreeNode * ParallelGameTree::getRoot()
 */
 Move * ParallelGameTree::searchTree(gameTreeNode * startingNode, int depth)
 {
-	// We've reached the end set the appropriate alpha and beta values
-	if (depth == 0) 
-	{
-		startingNode->setAlpha(startingNode->getBoard()->getScore(maximizer));
-		startingNode->setBeta(startingNode->getBoard()->getScore(maximizer));
-		return NULL;
-	}
-
-	// get all possible moves on this board state for the opponent
-	Board * currBoard = startingNode->getBoard();
-	Side opponent = startingNode->getSide() == PLAYER_ONE ? PLAYER_TWO : PLAYER_ONE;
-	vector<Move> moves = currBoard->generateMoves(opponent);
-
-	// make sure that at least one move exists
-	if (moves.size() == 0) 
-	{
-    	return NULL;
-    }
-
-    // In doing the PV split technique we allow the CPU to do searches on the first child node
-    Move * move = new Move(moves[0].getX(), moves[0].getY(), opponent);
-    Board * newBoard = currBoard->copy();
-    newBoard->doMove(move);
-    gameTreeNode * child = new gameTreeNode(newBoard, move, opponent);
-
-    // pass alpha and beta values down
-    child->setAlpha(startingNode->getAlpha());
-    child->setBeta(startingNode->getBeta());
-
-    Move * best = searchTree(child, depth - 1);
-
-    //Prepare the GPU computation by first loading values of interest
-    // we will do this by first getting the gpu computed alpha/beta values at the particular level
-    int * values;
-    values = (int *)calloc(moves.size(), sizeof(int));
-
-    if(startingNode->getSide() == maximizer)
-    {
-    	startingNode->setBeta(min(startingNode->getBeta(), child->getAlpha()));
-        values[0] = child->getAlpha();
-    }
-    else
-    {
-    	//Compute the alpha values between current node and the child
-    	startingNode->setAlpha(max(startingNode->getAlpha(), child->getBeta()));
-        values[0] = child->getBeta();
-    }
-
-    // We are done with the child node, so we delete it to avoid memory leaks
-    delete child;
-
-    /* 
-    * We've finished with the CPU side of computation now we must prepare 
-    * for the rest of the children on the cpu, first load initial values
-    */
-    int movesLeft = moves.size() - 1;
-    Move * deviceMove;
-    Move * movePtr = &moves[1]; // used to copy the array over
-    int * deviceScoreArray; // used to copy over current game state
+    // copy current score array, occupancy array, initialize output array and determine number of valid moves
+	int * deviceScoreArray;
     int * deviceOccupancyArray;
-    int * deviceValues; // used to store computations in the array, for alpha/beta values
+    int * deviceOutputArray;
+    int * outputValues;
+    vector<Move> moveList = startingNode->getBoard()->generateMoves(startingNode->getSide());
+    int numMoves = moveList.size();
+
+    outputValues = (int *)malloc(numMoves * sizeof(int));
+
+    //allocate device memory
+    cudaMalloc((void **)&deviceScoreArray, SQUARED_BOARD * sizeof(int));
+    cudaMalloc((void **)&deviceOccupancyArray, SQUARED_BOARD * sizeof(int));
+    cudaMalloc((void **)&deviceScoreArray, numMoves * sizeof(int));
 
 
-    //Begin to copy over the values onto the device, make sure to check for errors
-    cudaMalloc((void **) &deviceMove, movesLeft * sizeof(Move));
-    cudaMalloc((void **) &deviceScoreArray, BOARD_SIZE * BOARD_SIZE * sizeof(int));
-    cudaMalloc((void **) &deviceOccupancyArray, BOARD_SIZE * BOARD_SIZE * sizeof(int));
-    cudaMalloc((void **) &deviceValues, movesLeft * sizeof(int));
+    // copy scoreArray and outputArray to the device
+    cudaMemcpy(deviceScoreArray, startingNode->getBoard()->scoreArray, SQUARED_BOARD * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(deviceOccupancyArray, startingNode->getBoard()->occupancyArray, SQUARED_BOARD * sizeof(int), cudaMemcpyHostToDevice);
 
-    cudaMemcpy(deviceScoreArray, currBoard->scoreArray, BOARD_SIZE * BOARD_SIZE * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(deviceOccupancyArray, currBoard->occupancyArray, BOARD_SIZE * BOARD_SIZE * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(deviceMove, movePtr, movesLeft * sizeof(Move), cudaMemcpyHostToDevice);
+    // initialize the outputArray to all 0s
+    cudaMemset(deviceOutputArray, 0, numMoves * sizeof(int));
 
-    cudaMemset(deviceValues, 0, movesLeft * sizeof(int)); // set all of the values into the to 0
+    //Call our parallel algorithm
+    callCudaTreeSearch(deviceScoreArray, deviceOccupancyArray, deviceOutputArray, maximizer, numMoves, depth);
+    cudaDeviceSynchronize();
 
-    // call the kernel function to search the rest of the tree in parallel
-    callCudaTreeSearch(deviceMove, deviceScoreArray, deviceOccupancyArray, deviceValues, opponent,
-    	maximizer, startingNode->getAlpha(), startingNode->getBeta(), movesLeft, depth - 1);
+    //read output values back after the device has comleted operation
+    cudaMemcpy(outputValues, deviceOutputArray, numMoves * sizeof(int), cudaMemcpyDeviceToHost);
 
-    // copy remaining child values into host array
-    cudaMemcpy(values + 1, deviceValues, movesLeft * sizeof(int), cudaMemcpyDeviceToHost);
-
-    // find the best move
+    //look for best possible move amongst the output values
     int idx = 0;
-    if (startingNode->getSide() == maximizer) 
+    int best = 9999;
+    for(int i = 0; i < numMoves; i++)
     {
-    	int best = 9999;
-    	for (int i = 0; i <= movesLeft; i++) 
-    	{
-    		if (values[i] < best) 
-    		{
-    			best = values[i];
-    			idx = i;
-    		}
-    	}
-    	startingNode->setBeta(best);
-    } 
-    else 
-    {
-    	int best = -9999;
-    	for (int i = 0; i <= movesLeft; i++) 
-    	{
-    		if (values[i] > best) 
-    		{
-    			best = values[i];
-    			idx = i;
-    		}
-    	}
-    	startingNode->setAlpha(best);
+        if(outputValues[i] < best)
+        {
+            best = outputArray[i];
+            idx = i;
+        }
     }
 
-    // Free device allocated memory
-    cudaFree(deviceValues);
+    //free host and device Memory
+    free(outputValues);
     cudaFree(deviceScoreArray);
     cudaFree(deviceOccupancyArray);
-    cudaFree(deviceMove);
+    cudaFree(deviceOutputArray);
 
-    // return the current best move
-    Move *curMove = new Move(moves[idx].getX(), moves[idx].getY(), maximizer);
-    return curMove;
+    Move * bestMove = new Move(moveList[idx].getX(), moveList[idx].getY(), maximizer);
+    return bestMove;
 
 }

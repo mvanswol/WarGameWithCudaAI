@@ -44,29 +44,33 @@ int main()
     while(!game->isGameDone())
     {
         m = firstPlayer->doMove();
+        cout << "x : " << m->getX() << " y : " << m->getY() << endl;
         m = secondPlayer->doMove();
     }
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts_end);
     cout << "CPU Game completed." << endl;
     cout << (ts_end.tv_sec - ts_beg.tv_sec) + (ts_end.tv_nsec - ts_beg.tv_nsec) / 1e9 << " sec" << endl;
     
-    //cout << game->getScore(PLAYER_ONE) << endl;
-    //cout << game->getScore(PLAYER_TWO) << endl;    
+    cout << game->getScore(PLAYER_ONE) << endl;
+    cout << game->getScore(PLAYER_TWO) << endl;  
+
     
     cout << "Start of GPU Game..." << endl;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts_beg);
     while(!gpuGame->isGameDone())
     {
         gpuM = firstGPU->doMove();
+        cout << "x : " << gpuM->getX() << " y : " << gpuM->getY() << endl;
         gpuM = secondGPU->doMove();
     }
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts_end);
 
     cout << "GPU Game completed." << endl;
     cout << (ts_end.tv_sec - ts_beg.tv_sec) + (ts_end.tv_nsec - ts_beg.tv_nsec) / 1e9 << " sec" << endl;
+
     
-    //cout << gpuGame->getScore(PLAYER_ONE) << endl;
-    //cout << gpuGame->getScore(PLAYER_TWO) << endl; 
+    cout << gpuGame->getScore(PLAYER_ONE) << endl;
+    cout << gpuGame->getScore(PLAYER_TWO) << endl; 
 
     delete gpuGame;
     delete firstGPU;

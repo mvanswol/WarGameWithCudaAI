@@ -84,18 +84,11 @@ void gameTree::searchTree(gameTreeNode *start, int depth)
         
         if (start->getSide() == maximizer)
         {
-            start->setBeta(min(start->getBeta(), child->getAlpha()));
+            start->setBeta(max(start->getBeta(), child->getAlpha()));
         }
         else
         {
-            start->setAlpha(max(start->getAlpha(), child->getBeta()));
-        }
-        
-        delete child;
-        
-        if (start->getAlpha() > start->getBeta())
-        {
-            return;
+            start->setAlpha(min(start->getAlpha(), child->getBeta()));
         }
     }
 }

@@ -321,112 +321,129 @@ CUDA_CALLABLE_MEMBER void GPUNode::setBeta(int beta)
 }
 
 
-/*
-* Helper function for searching the tree, purely on the device to take advantage of recursion
-*/
-__device__ void cudaTreeSearchHelper(GPUNode * node, Side player, Side maximizer, int depth)
+__device__ void cudaTreeSearchHelper(GPUNode * node, Side lastPlayer, Side maximizer, int depth)
 {
-	/* Get board state so that we can find optimal moves */
-	GPUBoard * currBoard = node->getBoard();
-	Side opponent = (player == PLAYER_ONE) ? PLAYER_TWO : PLAYER_ONE;
-
-	// if depth equal 0, calculate scores and then return
-	if (depth == 0) 
-	{
-       node->setAlpha(node->getBoard()->getScore(maximizer));
+    //check to see if we have reached the bottom
+    if(depth == 0)
+    {
+        //return the heuristic of the node
+        node->setAlpha(node->getBoard()->getScore(maximizer));
        node->setBeta(node->getBoard()->getScore(maximizer));
        return;
     }
 
-    // Else try to computation of all other possible moves in this game state
+    //otherwise try all possible combinations of moves
     for(int i = 0; i < BOARD_SIZE; i++)
     {
-    	for(int j = 0; j < BOARD_SIZE; j++)
-    	{
-    		GPUMove * move = new GPUMove(i,j, opponent);
-    		if(currBoard->isMoveValid(move))
-    		{
-    			// create a new board and preform the move
-    			GPUBoard * newBoard = new GPUBoard(currBoard->scoreArray,currBoard->occupancyArray);
-    			newBoard->doMove(move);
-    			GPUNode * child = new GPUNode(newBoard, move, opponent);
+        for(int j = 0; j < BOARD_SIZE; j++)
+        {
+            Side currPlayer = (lastPlayer == PLAYER_ONE) ? PLAYER_TWO : PLAYER_ONE;
+            GPUMove * currMove = new GPUMove(i,j,currPlayer);
+            if(node->getBoard()->isMoveValid(currMove))
+            {
+                GPUBoard * gameState = new GPUBoard(node->getBoard()->scoreArray, node->getBoard()->occupancyArray);
+                gameState->doMove(currMove);
+                GPUNode * child = new GPUNode(gameState, currMove, currPlayer);
 
-    			//pass down alpha and beta values
-    			child->setAlpha(node->getAlpha());
-    			child->setBeta(node->getBeta());
+                //pass down alpha and beta
+                child->setAlpha(node->getAlpha());
+                child->setBeta(node->getBeta());
 
-    			// continue to search down this path
-    			cudaTreeSearchHelper(child, opponent, maximizer, depth - 1);
+                //continue the search
+                cudaTreeSearchHelper(child, currPlayer, maximizer, depth - 1);
 
-    			// check out heuristic
-    			if(player == maximizer)
-    			{
-    				node->setBeta(min(node->getBeta(), child->getAlpha()));
-    			}
-    			else
-    			{
-    				node->setAlpha(max(node->getAlpha(), child->getBeta()));
-    			}
+                //evaulate based upon heuristic
+                if(node->getSide() == maximizer)
+                {
+                    node->setBeta(max(node->getBeta(), child->getAlpha()));
+                }
+                else
+                {
+                    node->setAlpha(min(node->getAlpha(), child->getBeta()));
+                }
+            }
+        }
+    }
+}
 
-    			delete child;
-    			delete newBoard;
 
-    			// check if we have to prune this node
-    			if(node->getAlpha() >= node->getBeta())
-    			{
-    				return;
-    			}
+__device__ void cudaTreeSearchThread(GPUNode * node, Side lastPlayer, Side maximizer,  int depth)
+{
+    //check to see if we've reached a depth of 0
+    if(depth == 0)
+    {
+        //return the heuristic of the node
+        node->setAlpha(node->getBoard()->getScore(maximizer));
+       node->setBeta(node->getBoard()->getScore(maximizer));
+       return;
+    }
 
-    		}
+    //extract move from thread index
+    int x = threadIdx.x % BOARD_SIZE;
+    int y = threadIdx.x / BOARD_SIZE;
+    Side currPlayer = (lastPlayer == PLAYER_ONE) ? PLAYER_TWO : PLAYER_ONE;
+    GPUMove * currMove = new GPUMove(x,y, currPlayer);
 
-    	}
+    //check to see if the move is legal, if so we have to move down deeper
+    if(node->getBoard()->isMoveValid(currMove))
+    {
+        //create a new board and child node for the move
+        GPUBoard * gameState = new GPUBoard(node->getBoard()->scoreArray, node->getBoard()->occupancyArray);
+        gameState->doMove(currMove);
+        GPUNode * child = new GPUNode(gameState, currMove, currPlayer);
+
+        //pass down alpha and beta
+        child->setAlpha(node->getAlpha());
+        child->setBeta(node->getBeta());
+
+        //continue the search
+        cudaTreeSearchHelper(child, currPlayer, maximizer, depth - 1);
+
+        //evaulate based upon heuristic
+        if(node->getSide() == maximizer)
+        {
+            node->setBeta(max(node->getBeta(), child->getAlpha()));
+        }
+        else
+        {
+            node->setAlpha(min(node->getAlpha(), child->getBeta()));
+        }
+    }
+}
+
+
+__global__ void cudaTreeSearchBlock(int * scoreArray, int * occupancyArray, int * outputArray, Side maximizer, int numMoves, int depth)
+{
+    // have only the first thread of each block start a search, then at the next level all of the other threads will join in
+    if(threadIdx.x == 0)
+    {
+        // calculate board position with the given blockIdx
+        int x = blockIdx.x % BOARD_SIZE;
+        int y = blockIdx.x / BOARD_SIZE;
+
+        //make a move on the given board state
+        GPUBoard * gameState = new GPUBoard(scoreArray, occupancyArray);
+        GPUMove * currMove = new GPUMove(x,y, maximizer);
+        gameState->doMove(currMove);
+        GPUNode * node = new GPUNode(gameState, currMove, maximizer);
+
+        cudaTreeSearchThread(node, maximizer, maximizer, depth - 1);
+
+        //set out array to the beta value since this will always be evaulated as the maximizer
+        outputArray[blockIdx.x] = node->getBeta();
+
+        //clean up
+        delete gameState;
+        delete currMove;
+        delete node;
     }
 }
 
 
 /*
-* Initial call to the tree search, which calls our device helper function to do the rest of the work
-*/
-__global__ void cudaTreeSearch(Move * moveList, int * scoreArray, int * occupancyArray, int * outputValues, Side player, Side maximizer, int alpha, int beta, int numMovesLeft, int depth)
-{
-	// only allow the first thread of each block to do high-level tasks
-	if(threadIdx.x == 0)
-	{
-		// make only one node per block
-		GPUMove * move  = new GPUMove(moveList[blockIdx.x].x, moveList[blockIdx.x].y, player);
-
-		/* make a new board and do move on that board */
-		GPUBoard * newBoard = new GPUBoard(scoreArray, occupancyArray);
-		newBoard->doMove(move);
-		GPUNode * node = new GPUNode(newBoard, move, player);
-
-		/* set the alpha and beta values, we've learned from cpu side */
-		node->setAlpha(alpha);
-		node->setBeta(beta);
-
-		/* preform the rest of the search */
-		cudaTreeSearchHelper(node, player, maximizer, depth);
-
-		//update the values array, if parent node is maximizer look at child alpha
-		if(player == maximizer)
-		{
-			outputValues[blockIdx.x] = node->getBeta();
-		}
-		else
-		{
-			outputValues[blockIdx.x] = node->getAlpha();
-		}
-
-		delete newBoard;
-		delete move;
-        delete node;
-	}
-}
-
-/*
 * Helper function to call the kernel code
 */
-void callCudaTreeSearch(Move * moveList, int * scoreArray, int * occupancyArray, int * outputValues, Side player, Side maximizer, int alpha, int beta, int numMovesLeft, int depth)
+void callCudaTreeSearch(int * scoreArray, int * occupancyArray, int * outputArray, Side maximizer, int numMoves, int depth)
 {
-	cudaTreeSearch<<<numMovesLeft, BLOCK_SIZE>>>(moveList, scoreArray, occupancyArray, outputValues, player, maximizer, alpha, beta, numMovesLeft, depth);
+	cudaTreeSearchBlock<<<numMoves, SQUARED_BOARD>>>(scoreArray, occupancyArray, outputArray, maximizer, numMoves, depth);
 }
