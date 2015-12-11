@@ -6,4 +6,5 @@
 
 cd $PBS_O_WORKDIR
 
-./benchmarkGame
+./benchmarkGame > stats.txt
+

@@ -90,6 +90,13 @@ void gameTree::searchTree(gameTreeNode *start, int depth)
         {
             start->setAlpha(min(start->getAlpha(), child->getBeta()));
         }
+
+        delete child;
+
+        if(start->getAlpha() > start->getBeta())
+        {
+            return;
+        }
     }
 }
 

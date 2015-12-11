@@ -234,8 +234,8 @@ CUDA_CALLABLE_MEMBER GPUNode::GPUNode(GPUBoard * b, GPUMove * m, Side maximizer)
     this->board = b;
     this->m = m;
     this->maximizer = maximizer;
-    this->alpha = 9999;
-    this->beta = -9999;
+    this->alpha = 999999;
+    this->beta = -999999;
 }
 
 /*
@@ -244,7 +244,6 @@ CUDA_CALLABLE_MEMBER GPUNode::GPUNode(GPUBoard * b, GPUMove * m, Side maximizer)
 CUDA_CALLABLE_MEMBER GPUNode::~GPUNode()
 {
     //free board state associated with this particular node
-    delete board;
 }
 
 /*
@@ -353,14 +352,14 @@ __device__ void cudaTreeSearchHelper(GPUNode * node, Side lastPlayer, Side maxim
                 cudaTreeSearchHelper(child, currPlayer, maximizer, depth - 1);
 
                 //evaulate based upon heuristic
-                if(node->getSide() == maximizer)
-                {
+//                if(node->getSide() == maximizer)
+//                {
                     node->setBeta(max(node->getBeta(), child->getAlpha()));
-                }
-                else
-                {
+//                }
+//                else
+//                {
                     node->setAlpha(min(node->getAlpha(), child->getBeta()));
-                }
+//                }
             }
         }
     }
@@ -400,14 +399,14 @@ __device__ void cudaTreeSearchThread(GPUNode * node, Side lastPlayer, Side maxim
         cudaTreeSearchHelper(child, currPlayer, maximizer, depth - 1);
 
         //evaulate based upon heuristic
-        if(node->getSide() == maximizer)
-        {
+//        if(node->getSide() == maximizer)
+//        {
             node->setBeta(max(node->getBeta(), child->getAlpha()));
-        }
-        else
-        {
+//        }
+//        else
+//        {
             node->setAlpha(min(node->getAlpha(), child->getBeta()));
-        }
+//        }
     }
 }
 

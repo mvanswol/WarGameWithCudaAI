@@ -60,7 +60,7 @@ Move * ParallelGameTree::searchTree(gameTreeNode * startingNode, int depth)
     //allocate device memory
     cudaMalloc((void **)&deviceScoreArray, SQUARED_BOARD * sizeof(int));
     cudaMalloc((void **)&deviceOccupancyArray, SQUARED_BOARD * sizeof(int));
-    cudaMalloc((void **)&deviceScoreArray, numMoves * sizeof(int));
+    cudaMalloc((void **)&deviceOutputArray, numMoves * sizeof(int));
 
 
     // copy scoreArray and outputArray to the device
@@ -79,14 +79,15 @@ Move * ParallelGameTree::searchTree(gameTreeNode * startingNode, int depth)
 
     //look for best possible move amongst the output values
     int idx = 0;
-    int best = 9999;
+    int best = -9999;
     for(int i = 0; i < numMoves; i++)
     {
-        if(outputValues[i] < best)
+        if(outputValues[i] > best)
         {
-            best = outputArray[i];
+            best = outputValues[i];
             idx = i;
         }
+	printf("Output value: %i at i: %i \n", outputValues[i], i);
     }
 
     //free host and device Memory

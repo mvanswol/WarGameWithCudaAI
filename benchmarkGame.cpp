@@ -50,7 +50,20 @@ int main()
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts_end);
     cout << "CPU Game completed." << endl;
     cout << (ts_end.tv_sec - ts_beg.tv_sec) + (ts_end.tv_nsec - ts_beg.tv_nsec) / 1e9 << " sec" << endl;
-    
+    for(int i = 0; i < BOARD_SIZE; i++) {
+	for(int j = 0; j < BOARD_SIZE; j++) {
+	    cout << game->scoreArray[i*BOARD_SIZE + j] << " ";
+	}
+	cout << endl;
+    }
+    for(int i = 0; i < BOARD_SIZE; i++) {
+        for(int j = 0; j < BOARD_SIZE; j++) {
+            cout << game->occupancyArray[i*BOARD_SIZE + j] << " ";
+        }
+        cout << endl;
+    }
+
+
     cout << game->getScore(PLAYER_ONE) << endl;
     cout << game->getScore(PLAYER_TWO) << endl;  
 
@@ -67,6 +80,19 @@ int main()
 
     cout << "GPU Game completed." << endl;
     cout << (ts_end.tv_sec - ts_beg.tv_sec) + (ts_end.tv_nsec - ts_beg.tv_nsec) / 1e9 << " sec" << endl;
+
+    for(int i = 0; i < BOARD_SIZE; i++) {
+        for(int j = 0; j < BOARD_SIZE; j++) {
+            cout << gpuGame->scoreArray[i*BOARD_SIZE + j] << " ";
+        }
+        cout << endl;
+    }    
+    for(int i = 0; i < BOARD_SIZE; i++) {
+        for(int j = 0; j < BOARD_SIZE; j++) {
+            cout << gpuGame->occupancyArray[i*BOARD_SIZE + j] << " ";
+        }
+        cout << endl;
+    }
 
     
     cout << gpuGame->getScore(PLAYER_ONE) << endl;
