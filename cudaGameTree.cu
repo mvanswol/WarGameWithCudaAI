@@ -222,6 +222,7 @@ CUDA_CALLABLE_MEMBER int GPUBoard::getScore(Side player)
         }
     }
     
+    printf("score : %d\n", playerScore);
     return playerScore;
 }
 
@@ -414,8 +415,6 @@ __device__ void cudaTreeSearchThread(GPUNode * node, Side lastPlayer, Side maxim
 __global__ void cudaTreeSearchBlock(int * scoreArray, int * occupancyArray, int * outputArray, Side maximizer, int numMoves, int depth)
 {
     // have only the first thread of each block start a search, then at the next level all of the other threads will join in
-    if(threadIdx.x == 0)
-    {
         // calculate board position with the given blockIdx
         int x = blockIdx.x % BOARD_SIZE;
         int y = blockIdx.x / BOARD_SIZE;
@@ -426,16 +425,18 @@ __global__ void cudaTreeSearchBlock(int * scoreArray, int * occupancyArray, int 
         gameState->doMove(currMove);
         GPUNode * node = new GPUNode(gameState, currMove, maximizer);
 
-        cudaTreeSearchThread(node, maximizer, maximizer, depth - 1);
+        cudaTreeSearchHelper(node, maximizer, maximizer, depth - 1);
 
         //set out array to the beta value since this will always be evaulated as the maximizer
-        outputArray[blockIdx.x] = node->getBeta();
+        if(threadIdx.x == 0)
+        {
+             outputArray[blockIdx.x] = node->getBeta();
+        }
 
         //clean up
         delete gameState;
         delete currMove;
         delete node;
-    }
 }
 
 
@@ -444,5 +445,5 @@ __global__ void cudaTreeSearchBlock(int * scoreArray, int * occupancyArray, int 
 */
 void callCudaTreeSearch(int * scoreArray, int * occupancyArray, int * outputArray, Side maximizer, int numMoves, int depth)
 {
-	cudaTreeSearchBlock<<<numMoves, SQUARED_BOARD>>>(scoreArray, occupancyArray, outputArray, maximizer, numMoves, depth);
+	cudaTreeSearchBlock<<<numMoves, 1>>>(scoreArray, occupancyArray, outputArray, maximizer, numMoves, depth);
 }
